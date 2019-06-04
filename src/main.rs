@@ -21,13 +21,13 @@ impl Actor for DbExecutor {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct NewRecord {
-    phone: String,
+    phone_number: String,
     first_name: String,
     last_name: String,
 }
 
 struct GetRecord {
-    phone: String,
+    phone_number: String,
 }
 
 impl Message for NewRecord {
@@ -42,11 +42,12 @@ impl Handler<NewRecord> for DbExecutor {
     type Result = Result<(), Error>;
 
     fn handle(&mut self, msg: NewRecord, _: &mut Self::Context) -> Self::Result {
-        let (phone, record) = {
-            let (phone, fist_name, last_name) = (msg.phone, msg.first_name, msg.last_name);
+        let (phone_number, record) = {
+            let (phone_number, fist_name, last_name) =
+                (msg.phone_number, msg.first_name, msg.last_name);
             let created_at = now_iso_8601();
             (
-                phone,
+                phone_number,
                 serde_json::to_string(&Record {
                     fist_name,
                     last_name,
@@ -55,7 +56,10 @@ impl Handler<NewRecord> for DbExecutor {
                 .expect("can not encode record"),
             )
         };
-        let _: () = self.0.set(phone, record).expect("can not write to redis");
+        let _: () = self
+            .0
+            .set(phone_number, record)
+            .expect("can not write to redis");
         Ok(())
     }
 }
@@ -66,7 +70,7 @@ impl Handler<GetRecord> for DbExecutor {
     fn handle(&mut self, msg: GetRecord, _: &mut Self::Context) -> Self::Result {
         Ok(self
             .0
-            .get(msg.phone)
+            .get(msg.phone_number)
             .map(|value: String| serde_json::from_str(&value).ok())
             .unwrap_or(None))
     }
@@ -88,10 +92,10 @@ fn index(_req: &HttpRequest<State>) -> &'static str {
 }
 
 fn info(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    let phone = req.match_info()["phone"].to_string();
+    let phone_number = req.match_info()["phone_number"].to_string();
     req.state()
         .db
-        .send(GetRecord { phone })
+        .send(GetRecord { phone_number })
         .from_err()
         .and_then(|res| match res {
             Ok(maybe_record) => match maybe_record {
@@ -128,8 +132,10 @@ fn main() {
 
     HttpServer::new(move || {
         App::with_state(State { db: addr.clone() })
-            .resource("/phone/{phone}", |r| r.method(Method::GET).a(info))
-            .resource("/phone", |r| r.method(Method::POST).a(add))
+            .resource("/phone_number/{phone_number}", |r| {
+                r.method(Method::GET).a(info)
+            })
+            .resource("/phone_number", |r| r.method(Method::POST).a(add))
             .resource("/", |r| r.f(index))
             .finish()
     })
